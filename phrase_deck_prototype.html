@@ -619,21 +619,50 @@ function speakTTS(text, onend) {
   speechSynthesis.speak(u);
 }
 
-// Plays a real audio clip if the card provides one; falls back to TTS
-// on the given text if there's no clip, or if the clip fails to load/play.
+// One persistent <audio> element, reused for every real-audio clip.
+// iOS Safari only grants autoplay permission to an element that has
+// already been played during a genuine tap; a fresh `new Audio()` each
+// time never carries that permission over (that's why playback got less
+// reliable card after card), and juggling many large base64 elements at
+// once is also what caused the cut-off/garbled playback. Reusing one
+// element avoids both problems.
+const player = new Audio();
+let curEndedHandler = null;
+let curErrorHandler = null;
+
 function playClip(src, text, onComplete) {
+  if (curEndedHandler) { player.removeEventListener('ended', curEndedHandler); curEndedHandler = null; }
+  if (curErrorHandler) { player.removeEventListener('error', curErrorHandler); curErrorHandler = null; }
+
   if (src) {
-    const a = new Audio(src);
     let fellBack = false;
-    const fallback = () => {
+    const cleanup = () => {
+      if (curEndedHandler) { player.removeEventListener('ended', curEndedHandler); curEndedHandler = null; }
+      if (curErrorHandler) { player.removeEventListener('error', curErrorHandler); curErrorHandler = null; }
+    };
+    curEndedHandler = () => {
+      if (fellBack) return;
+      cleanup();
+      if (onComplete) onComplete();
+    };
+    curErrorHandler = () => {
       if (fellBack) return;
       fellBack = true;
+      cleanup();
       if (text) speakTTS(text, onComplete);
       else if (onComplete) onComplete();
     };
-    a.addEventListener('ended', () => { if (!fellBack && onComplete) onComplete(); });
-    a.addEventListener('error', fallback);
-    a.play().catch(fallback);
+    player.addEventListener('ended', curEndedHandler);
+    player.addEventListener('error', curErrorHandler);
+    try { player.pause(); player.currentTime = 0; } catch (e) { /* ignore */ }
+    player.src = src;
+    player.play().catch(() => {
+      if (fellBack) return;
+      fellBack = true;
+      cleanup();
+      if (text) speakTTS(text, onComplete);
+      else if (onComplete) onComplete();
+    });
   } else if (text) {
     speakTTS(text, onComplete);
   } else if (onComplete) {
