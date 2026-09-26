@@ -105,7 +105,7 @@
   #cardOuter.tall { aspect-ratio: 3/5; }
   #segmentStack {
     width: 100%; height: 100%;
-    display: flex; flex-direction: column; justify-content: flex-end;
+    display: flex; flex-direction: column; justify-content: center;
     padding: 28px 24px; gap: 16px;
   }
   .seg-line { text-align: center; transition: opacity 0.2s; }
@@ -300,7 +300,7 @@ const eAudioData = {
 const decks = [
   {
     id: 'deck_e',
-    name: '執著・有・要不然 (test 4)',
+    name: '執著・有・要不然 (test 5)',
     type: 'segments',
     cards: [
       {
@@ -391,7 +391,7 @@ const decks = [
   },
   {
     id: 'segments_test',
-    name: 'Shadowing (segments, test 4)',
+    name: 'Shadowing (segments, test 5)',
     type: 'segments',
     cards: [
       {
@@ -662,7 +662,7 @@ function render(isNewCard) {
   cardEl.style.transform = 'translateX(0px) rotate(0deg)';
 
   if (currentDeck.type === 'segments') {
-    renderSegments(c);
+    renderSegments(c, !isNewCard);
     if (isNewCard) attemptAutoplay(c);
     return;
   }
@@ -717,7 +717,7 @@ function render(isNewCard) {
 // full brightness (with pinyin, autoplayed); earlier segments stay on
 // screen, dimmed, with their pinyin hidden. Swipe up removes the newest
 // segment and restores the one above it.
-function renderSegments(c) {
+function renderSegments(c, animate) {
   explainWrap.style.display = 'none';
   revealEl.style.display = 'none';
   segmentStack.style.display = 'flex';
@@ -734,11 +734,21 @@ function renderSegments(c) {
   if (!atEnd) hint += 'swipe down for next \u2193';
   swipeHint.textContent = hint;
 
+  // Remember where each line was, so after re-centering the lines can
+  // slide from their old spot to the new one instead of jumping.
+  const prevTops = {};
+  if (animate) {
+    segmentStack.querySelectorAll('.seg-line').forEach(el => {
+      prevTops[el.dataset.i] = el.getBoundingClientRect().top;
+    });
+  }
+
   segmentStack.innerHTML = '';
   for (let i = 0; i < stage; i++) {
     const seg = c.segments[i];
     const line = document.createElement('div');
     line.className = 'seg-line' + (i === stage - 1 ? ' active' : '');
+    line.dataset.i = i;
     const hanzi = document.createElement('div');
     hanzi.className = 'seg-hanzi';
     hanzi.textContent = seg.hanzi;
@@ -749,6 +759,25 @@ function renderSegments(c) {
     line.appendChild(pinyin);
     segmentStack.appendChild(line);
   }
+
+  if (!animate) return;
+  const lines = segmentStack.querySelectorAll('.seg-line');
+  lines.forEach(el => {
+    const before = prevTops[el.dataset.i];
+    el.style.transition = 'none';
+    if (before === undefined) {
+      el.style.opacity = '0';            // newly revealed line fades in
+    } else {
+      const delta = before - el.getBoundingClientRect().top;
+      el.style.transform = 'translateY(' + delta + 'px)';
+    }
+  });
+  void segmentStack.offsetHeight;        // commit the starting positions
+  lines.forEach(el => {
+    el.style.transition = 'transform 0.25s ease-out, opacity 0.25s ease-out';
+    el.style.transform = '';
+    el.style.opacity = '';
+  });
 }
 
 /* ---------- TTS ---------- */
